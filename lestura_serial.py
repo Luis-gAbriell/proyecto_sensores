@@ -5,6 +5,32 @@ import sqlite3
 import time
 import os
 
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+import pickle
+
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+def autenticar_drive():
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    if not creds:
+        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+    return build('drive', 'v3', credentials=creds)
+
+def subir_archivo_drive(nombre_local, nombre_en_drive):
+    servicio = autenticar_drive()
+    metadata = {'name': nombre_en_drive}
+    media = MediaFileUpload(nombre_local, resumable=True)
+    archivo = servicio.files().create(body=metadata, media_body=media, fields='id').execute()
+    print(f" Archivo subido a Google Drive: {nombre_en_drive} (ID: {archivo.get('id')})")
+
 # Configura tu puerto y velocidad según Arduino
 puerto = 'COM3'  # Cambia esto si usas otro
 baudrate = 9600
@@ -93,12 +119,15 @@ while True:
 
     # Guardar CSV y Excel
     nombre_base = f"datos_sensores_{block_num:04d}"
-    df.to_csv(f"{nombre_base}.csv", index=False)
-    df.to_excel(f"{nombre_base}.xlsx", index=False)
-
+    csv_file = f"{nombre_base}.csv"
+    excel_file = f"{nombre_base}.xlsx"
+    df.to_csv(csv_file, index=False)
+    df.to_excel(excel_file, index=False)
     print(f"\nBloque {block_num} guardado en CSV, Excel y base de datos SQLite.")
-    block_num += 1
-
+    # Subir a Google Drive
+    subir_archivo_drive(csv_file, csv_file)
+    subir_archivo_drive(excel_file, excel_file)
+    
     # Preguntar si continuar
     continuar = input("\n¿Deseas seguir recolectando datos? (s/n): ").strip().lower()
     if continuar != 's':
